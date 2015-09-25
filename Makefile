@@ -4,7 +4,8 @@ BASE_DIR=$(shell pwd)
 CUSTOM_INITRD=$(BASE_DIR)/custom-initrd
 CUSTOM_INSTALL_FS=$(BASE_DIR)/custom-fs
 CUSTOM=$(BASE_DIR)/custom
-SOURCE_ISO=ubuntu-14.04.3-server-amd64.iso
+SOURCE_ARCH=amd64
+SOURCE_ISO=ubuntu-14.04.3-server-${SOURCE_ARCH}.iso
 SOURCE_URL=http://releases.ubuntu.com/14.04/$(SOURCE_ISO)
 TARGET_ISO=$(BASE_DIR)/$(IMAGE).iso
 TARGET_ISO_FILENAME=$(shell basename ${TARGET_ISO})
@@ -57,13 +58,22 @@ $(TARGET_ISO): $(IMAGE_TARGET_DIR) $(IMAGE_FS) $(IMAGE_INITRD) $(shell find cust
 	sudo cp --no-preserve ownership,mode "${IMAGE_FS_MANIFEST}" "${IMAGE_TARGET_DIR}/install/filesystem.manifest"
 	sudo cp --no-preserve ownership,mode "${IMAGE_FS}" "${IMAGE_TARGET_DIR}/install/filesystem.squashfs"
 	cd $(IMAGE_TARGET_DIR) && find -type f -print0 | sudo xargs -0 md5sum | grep -v isolinux/boot.cat | sudo tee md5sum.txt > /dev/null
-	#sudo mkisofs -D -r -V "${IMAGE_DESC}" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ${TARGET_ISO} ${IMAGE}/
-	sudo mkisofs -U -A "CeibalTero" -V "${IMAGE_DESC}" -volset "CeibalTero" \
-		-J -joliet-long -r -v -T -o "${TARGET_ISO}" \
-		-b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
-		-boot-load-size 4 -boot-info-table -eltorito-alt-boot \
-		-e boot/grub/efi.img -no-emul-boot "${IMAGE_TARGET_DIR}"
-	sudo isohybrid "${TARGET_ISO}"
+	# Build EFI bootable images if grub/efi is available.
+	if [ -d ${IMAGE_TARGET_DIR}/boot/grub/efi.img ]; then \
+		sudo mkisofs -U -A "CeibalTero" -V "${IMAGE_DESC}" -volset "CeibalTero" \
+			-J -joliet-long -r -v -T -o "${TARGET_ISO}" \
+			-b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
+			-boot-load-size 4 -boot-info-table -eltorito-alt-boot \
+			-e boot/grub/efi.img -no-emul-boot "${IMAGE_TARGET_DIR}"; \
+			sudo isohybrid --uefi "${TARGET_ISO}"; \
+	else \
+		sudo mkisofs -U -A "CeibalTero" -V "${IMAGE_DESC}" -volset "CeibalTero" \
+			-J -joliet-long -r -v -T -o "${TARGET_ISO}" \
+			-b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot \
+			-boot-load-size 4 -boot-info-table \
+			-no-emul-boot "${IMAGE_TARGET_DIR}"; \
+			sudo isohybrid "${TARGET_ISO}"; \
+	fi;
 
 $(IMAGE_SOURCE_DIR)/install/filesystem.squashfs: $(BUILD_DIR)/.source.tmstamp
 $(IMAGE_SOURCE_DIR): $(BUILD_DIR)/.source.tmstamp
